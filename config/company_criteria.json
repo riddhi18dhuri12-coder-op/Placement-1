@@ -1,0 +1,53 @@
+[
+  {
+    "company": "Example Corp A (Mass Recruiter)",
+    "min_cgpa": 6.0,
+    "min_technical_skills": 40,
+    "min_aptitude_score": 40,
+    "max_backlogs": 1,
+    "branches": [
+      "CSE",
+      "IT",
+      "ECE",
+      "EEE",
+      "MECH",
+      "CIVIL"
+    ]
+  },
+  {
+    "company": "Example Corp B (IT Services)",
+    "min_cgpa": 6.5,
+    "min_technical_skills": 45,
+    "min_aptitude_score": 50,
+    "max_backlogs": 0,
+    "branches": [
+      "CSE",
+      "IT",
+      "ECE"
+    ]
+  },
+  {
+    "company": "Example Corp C (Product / Core Tech)",
+    "min_cgpa": 7.5,
+    "min_technical_skills": 70,
+    "min_aptitude_score": 65,
+    "max_backlogs": 0,
+    "branches": [
+      "CSE",
+      "IT"
+    ]
+  },
+  {
+    "company": "Example Corp D (Core Engineering)",
+    "min_cgpa": 6.5,
+    "min_technical_skills": 50,
+    "min_aptitude_score": 45,
+    "max_backlogs": 0,
+    "branches": [
+      "ECE",
+      "EEE",
+      "MECH",
+      "CIVIL"
+    ]
+  }
+]
