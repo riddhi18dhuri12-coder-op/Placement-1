@@ -21,6 +21,9 @@ sys.path.append(os.path.join(BASE_DIR, "src"))
 
 from skill_gap import analyze_skill_gap, SKILL_FEATURES  # noqa: E402
 from skills_catalog import get_skill_catalog, compute_technical_score, get_resource_link  # noqa: E402
+from job_roles import (  # noqa: E402
+    ordered_roles_for_branch, get_combined_catalog, get_role_resource_link,
+)
 from company_eligibility import check_eligibility  # noqa: E402
 from progress_store import save_snapshot, load_history, clear_history  # noqa: E402
 from pdf_report import build_report_pdf  # noqa: E402
@@ -66,7 +69,7 @@ st.markdown("""
         display: inline-block; background: #2E2A5C; color: #D8D3FF;
         border-radius: 999px; padding: 0.25rem 0.8rem; margin: 0.15rem; font-size: 0.85rem;
     }
-    .skill-pill a { color: #D8D3FF; cdtext-decoration: none; }
+    .skill-pill a { color: #D8D3FF; text-decoration: none; }
     .rec-card {
         background: #1A1D29; border-left: 4px solid #6C5CE7; border-radius: 10px;
         padding: 0.9rem 1.1rem; margin-bottom: 0.7rem;
@@ -199,8 +202,19 @@ tab_predict, tab_whatif, tab_batch, tab_progress, tab_insights, tab_about = st.t
 # ============================================================================
 with tab_predict:
     st.subheader("Your Details")
-    branch = st.selectbox("Branch", ["CSE", "IT", "ECE", "EEE", "MECH", "CIVIL"])
-    skill_catalog = get_skill_catalog(branch)
+    dcol1, dcol2 = st.columns(2)
+    with dcol1:
+        branch = st.selectbox("Branch", ["CSE", "IT", "ECE", "EEE", "MECH", "CIVIL"])
+    with dcol2:
+        role_options = ordered_roles_for_branch(branch)
+        role = st.selectbox(
+            "Job Role you're targeting",
+            role_options,
+            help="Recommendations (missing skills, readiness score) will be tailored to this role, "
+                 "on top of your branch benchmark. The list is ordered for your branch, but you can "
+                 "pick any role.",
+        )
+    skill_catalog = get_combined_catalog(branch, role)
 
     with st.form("student_form"):
         col1, col2 = st.columns(2)
@@ -216,7 +230,7 @@ with tab_predict:
             certifications = st.number_input("Number of Certifications", 0, 15, 1)
             backlogs = st.number_input("Number of Active Backlogs", 0, 10, 0)
 
-        st.markdown(f"**Technical Skills — select what you know ({branch})**")
+        st.markdown(f"**Technical Skills — select what you know ({branch} + {role})**")
         known_skills = st.multiselect(
             "Skills", options=list(skill_catalog.keys()), label_visibility="collapsed",
         )
@@ -345,7 +359,7 @@ with tab_predict:
         st.markdown("---")
         st.subheader("🧩 Skill Gap Analysis")
         full_student = {**student_input, **subject_input}
-        result = analyze_skill_gap(full_student, branch=branch, known_skills=known_skills)
+        result = analyze_skill_gap(full_student, branch=branch, known_skills=known_skills, role=role)
         gap_df = result["gap_table"]
 
         st.dataframe(
@@ -388,6 +402,44 @@ with tab_predict:
                 else:
                     pills.append(f'<span class="skill-pill">{m["Skill"]}</span>')
             st.markdown(" ".join(pills), unsafe_allow_html=True)
+
+        # ---- Role fit ----
+        if result.get("role"):
+            st.markdown("---")
+            st.subheader(f"🧭 Role Fit — {role}")
+            readiness = result.get("role_readiness", 0.0)
+            rc1, rc2 = st.columns([1, 2])
+            with rc1:
+                st.markdown(
+                    f'<div class="metric-card"><div class="value">{readiness}%</div>'
+                    f'<div class="label">Skill match for {role}</div></div>',
+                    unsafe_allow_html=True,
+                )
+            with rc2:
+                if readiness >= 75:
+                    st.success(f"Strong match — your selected skills already cover most of what a "
+                               f"{role} role typically needs.")
+                elif readiness >= 40:
+                    st.warning(f"Partial match — you cover some of the core {role} skills, but a "
+                               "few high-impact gaps remain below.")
+                else:
+                    st.error(f"Early stage — most of the skills recruiters expect for {role} aren't "
+                             "in your list yet. Use the gaps below to prioritize.")
+
+            if result.get("missing_role_skills"):
+                st.caption(f"Highest-impact skills for a **{role}** that you haven't listed yet:")
+                role_pills = []
+                for m in result["missing_role_skills"]:
+                    link = get_role_resource_link(m["Skill"])
+                    if link:
+                        role_pills.append(
+                            f'<span class="skill-pill"><a href="{link}" target="_blank">{m["Skill"]} 🔗</a></span>'
+                        )
+                    else:
+                        role_pills.append(f'<span class="skill-pill">{m["Skill"]}</span>')
+                st.markdown(" ".join(role_pills), unsafe_allow_html=True)
+            else:
+                st.info(f"You already know every catalog skill listed for {role}. 🎉")
 
         if backlogs > 0:
             st.warning(f"You currently have {backlogs} active backlog(s). Clearing these should be a top "
@@ -450,11 +502,14 @@ with tab_predict:
         st.session_state["last_result"] = {
             "student_input": student_input,
             "branch": branch,
+            "role": role,
             "pred_label": pred_label,
             "proba": proba,
             "gap_rows": gap_df.to_dict("records"),
             "recommendations": all_recs,
             "missing_skills": result.get("missing_skills"),
+            "role_readiness": result.get("role_readiness"),
+            "missing_role_skills": result.get("missing_role_skills"),
             "eligibility": eligibility,
         }
 
@@ -473,6 +528,8 @@ with tab_predict:
             probability=proba, inputs=student_input, gap_rows=gap_df.to_dict("records"),
             recommendations=all_recs, missing_skills=result.get("missing_skills"),
             eligible_companies=eligibility,
+            role=result.get("role"), role_readiness=result.get("role_readiness"),
+            missing_role_skills=result.get("missing_role_skills"),
         )
         with open(pdf_path, "rb") as f:
             st.download_button(

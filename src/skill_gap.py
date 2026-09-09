@@ -22,6 +22,7 @@ Logic:
 import os
 import pandas as pd
 from skills_catalog import get_missing_skills
+from job_roles import get_missing_role_skills, compute_role_readiness
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_PATH = os.path.join(BASE_DIR, "data", "placement_data.csv")
@@ -104,7 +105,8 @@ def analyze_subject_gap(df: pd.DataFrame, branch: str, student: dict, subscore_c
     return pd.DataFrame(rows).sort_values("Priority_Score", ascending=False) if rows else pd.DataFrame()
 
 
-def analyze_skill_gap(student: dict, branch: str = None, known_skills: list = None) -> dict:
+def analyze_skill_gap(student: dict, branch: str = None, known_skills: list = None,
+                       role: str = None) -> dict:
     """
     student: dict with keys matching SKILL_FEATURES (+ optional 'Backlogs',
         and optionally the subject sub-scores DSA_Score/DBMS_Score/OS_CN_Score
@@ -113,6 +115,11 @@ def analyze_skill_gap(student: dict, branch: str = None, known_skills: list = No
     known_skills: optional list of specific skill names the student selected
         (e.g. ['Python', 'SQL']) — used to recommend specific missing skills
         instead of just a generic "improve technical skills" message.
+    role: optional target job role (e.g. "Data Scientist"). When provided,
+        the specific-skill recommendation and "skills to learn next" list
+        are driven by what THAT ROLE needs (via job_roles.py) instead of
+        the generic branch-wide catalog, and a role-readiness score is
+        added to the result.
 
     Returns a dict with per-feature gap, a priority-ranked list, human
     -readable recommendations for the top gaps, and (when available)
@@ -140,7 +147,18 @@ def analyze_skill_gap(student: dict, branch: str = None, known_skills: list = No
     recommendations = []
     for _, row in top_gaps.iterrows():
         feat = row["Feature"]
-        if feat == "Technical_Skills" and branch and known_skills is not None:
+        if feat == "Technical_Skills" and role and known_skills is not None:
+            # A target role was given — recommend skills specific to THAT
+            # role rather than the generic branch-wide catalog.
+            missing = get_missing_role_skills(role, known_skills, top_n=3)
+            if missing:
+                skill_names = ", ".join(m["Skill"] for m in missing)
+                advice = (f"Your technical skill set is below the benchmark for placed students, and "
+                          f"below what recruiters typically look for in a {role}. Consider learning: "
+                          f"{skill_names}.")
+            else:
+                advice = RECOMMENDATIONS.get(feat, "Work on improving this area.")
+        elif feat == "Technical_Skills" and branch and known_skills is not None:
             # Swap the generic technical-skills message for specific,
             # named skills the student is missing.
             missing = get_missing_skills(branch, known_skills, top_n=3)
@@ -164,6 +182,12 @@ def analyze_skill_gap(student: dict, branch: str = None, known_skills: list = No
     # "skills to add next" checklist in the UI.
     if branch and known_skills is not None:
         result["missing_skills"] = get_missing_skills(branch, known_skills, top_n=5)
+
+    # ---- Role-specific skill gap (only when a target role was given) ----
+    if role and known_skills is not None:
+        result["role"] = role
+        result["role_readiness"] = compute_role_readiness(role, known_skills)
+        result["missing_role_skills"] = get_missing_role_skills(role, known_skills, top_n=6)
 
     # ---- Subject-wise breakdown (if the dataset/student input has it) ----
     if has_tech_sub and all(c in student for c in TECHNICAL_SUBSCORES):

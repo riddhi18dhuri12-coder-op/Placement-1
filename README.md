@@ -23,8 +23,9 @@ placement_project/
 │   ├── preprocessing.py            # Cleaning, encoding, train/test split
 │   ├── eda.py                      # Exploratory Data Analysis + plots
 │   ├── train_models.py             # CV + tuning + calibration + uncertainty ensemble + versioning
-│   ├── skill_gap.py                # Skill Gap Analysis engine (+ subject-wise breakdown)
-│   ├── skills_catalog.py           # Named-skill catalog, scoring, and learning-resource links
+│   ├── skill_gap.py                # Skill Gap Analysis engine (+ subject-wise & role-wise breakdown)
+│   ├── skills_catalog.py           # Branch-wise named-skill catalog, scoring, and resource links
+│   ├── job_roles.py                # Job-role skill catalog + role-readiness scoring
 │   ├── company_eligibility.py      # Illustrative company-eligibility checker
 │   └── progress_store.py           # SQLite-backed per-student progress history
 ├── notebooks/
@@ -134,6 +135,13 @@ Jupyter for the narrated pipeline (EDA → modeling → skill gap).
    branch, weighted by each feature's importance (from the trained model),
    with subject-level breakdowns, and returns a prioritized, plain-language
    improvement plan with resource links.
+7b. **Job-Role Skill Gap** — The student also picks a **target job role**
+   (e.g. Data Scientist, DevOps Engineer, Embedded Systems Engineer — 19
+   roles across all 6 branches, see `src/job_roles.py`). Their selected
+   skills are matched against that role's specific weighted skill catalog to
+   produce a **Role Readiness %** and a ranked "skills to learn next for
+   this role" list with resource links — independent of, and in addition
+   to, the branch-wide benchmark above.
 8. **Explainability** — SHAP (`TreeExplainer` / `LinearExplainer` depending
    on the winning model) shows per-feature contribution for each prediction.
 9. **Deployment** — Streamlit dashboard: single prediction, what-if

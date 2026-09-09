@@ -6,8 +6,6 @@ skill-gap analysis, so they can save/print/share it outside the dashboard.
 """
 
 import datetime
-import os
-import tempfile
 from fpdf import FPDF
 
 # The built-in "Helvetica" core font only supports latin-1, so any text
@@ -89,17 +87,20 @@ def build_report_pdf(
     recommendations: list,
     missing_skills: list = None,
     eligible_companies: list = None,
+    role: str = None,
+    role_readiness: float = None,
+    missing_role_skills: list = None,
     output_path: str = "/tmp/placement_report.pdf",
 ) -> str:
-    if output_path is None:
-            output_path = os.path.join(tempfile.gettempdir(),"placement_report.pdf")
     pdf = ReportPDF()
     pdf.add_page()
 
     pdf.section_title("Student Summary")
+    role_line = f"Target Job Role: {role}\n" if role else ""
     pdf.body_text(
         f"Student ID: {student_id or 'N/A'}\n"
         f"Branch: {branch}\n"
+        f"{role_line}"
         f"Prediction: {prediction_label}\n"
         f"Estimated placement probability: {probability * 100:.1f}%"
     )
@@ -129,6 +130,16 @@ def build_report_pdf(
     if missing_skills:
         pdf.section_title("Skills to Learn Next")
         pdf.body_text(", ".join(m["Skill"] for m in missing_skills))
+
+    if role:
+        pdf.section_title(f"Role Fit - {role}")
+        if role_readiness is not None:
+            pdf.body_text(f"Skill match for this role: {role_readiness}%")
+        if missing_role_skills:
+            pdf.body_text(
+                "Highest-impact skills for this role you haven't listed yet: "
+                + ", ".join(m["Skill"] for m in missing_role_skills)
+            )
 
     if eligible_companies:
         pdf.section_title("Illustrative Company Eligibility")
