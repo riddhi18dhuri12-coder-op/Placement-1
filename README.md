@@ -26,6 +26,7 @@ placement_project/
 │   ├── skill_gap.py                # Skill Gap Analysis engine (+ subject-wise & role-wise breakdown)
 │   ├── skills_catalog.py           # Branch-wise named-skill catalog, scoring, and resource links
 │   ├── job_roles.py                # Job-role skill catalog + role-readiness scoring
+│   ├── resume_parser.py            # PDF/DOCX/TXT resume → auto-filled form fields
 │   ├── company_eligibility.py      # Illustrative company-eligibility checker
 │   └── progress_store.py           # SQLite-backed per-student progress history
 ├── notebooks/
@@ -142,6 +143,13 @@ Jupyter for the narrated pipeline (EDA → modeling → skill gap).
    produce a **Role Readiness %** and a ranked "skills to learn next for
    this role" list with resource links — independent of, and in addition
    to, the branch-wide benchmark above.
+7c. **Resume Upload (optional)** — Instead of manual entry, a student can
+   upload a PDF/DOCX/TXT resume (`src/resume_parser.py`). It's scanned
+   (regex + keyword heuristics, no external NLP service) for branch, CGPA,
+   project/internship/certification counts, and known skills, which
+   auto-fill the form and auto-select a best-matching target role — all
+   fields stay editable so the student can correct anything before
+   predicting.
 8. **Explainability** — SHAP (`TreeExplainer` / `LinearExplainer` depending
    on the winning model) shows per-feature contribution for each prediction.
 9. **Deployment** — Streamlit dashboard: single prediction, what-if

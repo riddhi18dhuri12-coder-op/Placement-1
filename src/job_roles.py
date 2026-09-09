@@ -312,6 +312,37 @@ def get_role_catalog(role: str) -> dict:
     return JOB_ROLES.get(role, {})
 
 
+def get_master_skill_catalog() -> dict:
+    """
+    Union of every branch's skill catalog and every role's skill catalog —
+    used when we don't yet know the student's branch/role (e.g. scanning a
+    freshly uploaded resume for skill mentions before the form is filled in).
+    """
+    from skills_catalog import BRANCH_SKILLS, GENERAL_SKILLS
+    combined = dict(GENERAL_SKILLS)
+    for branch_catalog in BRANCH_SKILLS.values():
+        combined.update(branch_catalog)
+    for role_catalog in JOB_ROLES.values():
+        combined.update(role_catalog)
+    return combined
+
+
+def guess_best_role(known_skills: list) -> str:
+    """
+    Best-matching role for a set of known skills, by total weight overlap.
+    Returns None if no role has any overlap (e.g. no skills detected).
+    """
+    if not known_skills:
+        return None
+    known = set(known_skills)
+    best_role, best_score = None, 0
+    for role, catalog in JOB_ROLES.items():
+        score = sum(w for s, w in catalog.items() if s in known)
+        if score > best_score:
+            best_role, best_score = role, score
+    return best_role
+
+
 def get_combined_catalog(branch: str, role: str) -> dict:
     """
     Union of the branch-wide skill catalog and the role-specific catalog,

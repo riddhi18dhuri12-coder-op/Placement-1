@@ -23,7 +23,9 @@ from skill_gap import analyze_skill_gap, SKILL_FEATURES  # noqa: E402
 from skills_catalog import get_skill_catalog, compute_technical_score, get_resource_link  # noqa: E402
 from job_roles import (  # noqa: E402
     ordered_roles_for_branch, get_combined_catalog, get_role_resource_link,
+    get_master_skill_catalog, guess_best_role,
 )
+from resume_parser import parse_resume_file  # noqa: E402
 from company_eligibility import check_eligibility  # noqa: E402
 from progress_store import save_snapshot, load_history, clear_history  # noqa: E402
 from pdf_report import build_report_pdf  # noqa: E402
@@ -202,37 +204,120 @@ tab_predict, tab_whatif, tab_batch, tab_progress, tab_insights, tab_about = st.t
 # ============================================================================
 with tab_predict:
     st.subheader("Your Details")
+
+    # ---- Defaults (only take effect the first time each key is touched) ----
+    st.session_state.setdefault("branch_select", "CSE")
+    st.session_state.setdefault("cgpa_input", 7.0)
+    st.session_state.setdefault("aptitude_input", 60)
+    st.session_state.setdefault("communication_input", 60)
+    st.session_state.setdefault("projects_input", 2)
+    st.session_state.setdefault("internships_input", 0)
+    st.session_state.setdefault("certifications_input", 1)
+    st.session_state.setdefault("backlogs_input", 0)
+    st.session_state.setdefault("known_skills_select", [])
+
+    # ---- Resume upload (alternative to manual entry) ----
+    st.markdown("**📄 Upload your resume to auto-fill this form** *(optional — you can still edit everything below)*")
+    resume_file = st.file_uploader(
+        "Resume (PDF, DOCX, or TXT)", type=["pdf", "docx", "txt"], label_visibility="collapsed",
+    )
+    resume_applied_key = f"{resume_file.name}_{resume_file.size}" if resume_file is not None else None
+
+    if resume_file is not None and st.session_state.get("_resume_applied_key") != resume_applied_key:
+        with st.spinner("Reading your resume..."):
+            parsed = parse_resume_file(resume_file, get_master_skill_catalog())
+        st.session_state["_resume_parsed_summary"] = parsed
+        if parsed.get("branch_guess"):
+            st.session_state["branch_select"] = parsed["branch_guess"]
+        if parsed.get("cgpa") is not None:
+            st.session_state["cgpa_input"] = parsed["cgpa"]
+        if parsed.get("projects_count") is not None:
+            st.session_state["projects_input"] = parsed["projects_count"]
+        if parsed.get("internships_count") is not None:
+            st.session_state["internships_input"] = parsed["internships_count"]
+        if parsed.get("certifications_count") is not None:
+            st.session_state["certifications_input"] = parsed["certifications_count"]
+        guessed_role = guess_best_role(parsed.get("known_skills", []))
+        if guessed_role:
+            st.session_state["role_select"] = guessed_role
+        # Applied once branch/role (and therefore the valid skill options) are
+        # known below — stash for now, filter to valid options, then apply.
+        st.session_state["_resume_pending_skills"] = parsed.get("known_skills", [])
+        st.session_state["_resume_applied_key"] = resume_applied_key
+
+    if st.session_state.get("_resume_parsed_summary"):
+        parsed_summary = st.session_state["_resume_parsed_summary"]
+        with st.expander("📋 What we found in your resume — review before predicting", expanded=True):
+            if not parsed_summary.get("text_extracted"):
+                st.warning(
+                    "We couldn't read any text from this file — it may be a scanned/image-only resume. "
+                    "Please fill the form in manually below."
+                )
+            else:
+                found_bits = []
+                if parsed_summary.get("branch_guess"):
+                    found_bits.append(f"Branch: **{parsed_summary['branch_guess']}**")
+                if parsed_summary.get("cgpa") is not None:
+                    found_bits.append(f"CGPA: **{parsed_summary['cgpa']}**")
+                if parsed_summary.get("projects_count") is not None:
+                    found_bits.append(f"Projects: **{parsed_summary['projects_count']}**")
+                if parsed_summary.get("internships_count") is not None:
+                    found_bits.append(f"Internships: **{parsed_summary['internships_count']}**")
+                if parsed_summary.get("certifications_count") is not None:
+                    found_bits.append(f"Certifications: **{parsed_summary['certifications_count']}**")
+                if found_bits:
+                    st.markdown(" · ".join(found_bits))
+                else:
+                    st.caption("We found the resume text, but couldn't confidently detect CGPA/section counts — "
+                               "please fill those in manually.")
+                if parsed_summary.get("known_skills"):
+                    st.caption("Skills detected (auto-selected below — remove any that don't apply):")
+                    st.markdown(
+                        " ".join(f'<span class="skill-pill">{s}</span>' for s in parsed_summary["known_skills"]),
+                        unsafe_allow_html=True,
+                    )
+                st.caption("Everything below is editable — this is best-effort extraction, not guaranteed accurate.")
+
+    st.markdown("---")
+
     dcol1, dcol2 = st.columns(2)
     with dcol1:
-        branch = st.selectbox("Branch", ["CSE", "IT", "ECE", "EEE", "MECH", "CIVIL"])
+        branch = st.selectbox("Branch", ["CSE", "IT", "ECE", "EEE", "MECH", "CIVIL"], key="branch_select")
     with dcol2:
         role_options = ordered_roles_for_branch(branch)
         role = st.selectbox(
             "Job Role you're targeting",
-            role_options,
+            role_options, key="role_select",
             help="Recommendations (missing skills, readiness score) will be tailored to this role, "
                  "on top of your branch benchmark. The list is ordered for your branch, but you can "
                  "pick any role.",
         )
     skill_catalog = get_combined_catalog(branch, role)
 
+    # Now that branch/role (and so the valid skill options) are resolved,
+    # apply any skills detected from a just-uploaded resume.
+    pending_skills = st.session_state.pop("_resume_pending_skills", None)
+    if pending_skills is not None:
+        st.session_state["known_skills_select"] = [s for s in pending_skills if s in skill_catalog]
+
     with st.form("student_form"):
         col1, col2 = st.columns(2)
 
         with col1:
-            cgpa = st.number_input("CGPA (out of 10)", 0.0, 10.0, 7.0, 0.1)
-            aptitude = st.slider("Aptitude Score (0-100)", 0, 100, 60)
-            communication = st.slider("Communication Skills (0-100)", 0, 100, 60)
+            cgpa = st.number_input("CGPA (out of 10)", 0.0, 10.0, step=0.1, key="cgpa_input")
+            aptitude = st.slider("Aptitude Score (0-100)", 0, 100, key="aptitude_input")
+            communication = st.slider("Communication Skills (0-100)", 0, 100, key="communication_input")
 
         with col2:
-            projects = st.number_input("Number of Projects", 0, 15, 2)
-            internships = st.number_input("Number of Internships", 0, 10, 0)
-            certifications = st.number_input("Number of Certifications", 0, 15, 1)
-            backlogs = st.number_input("Number of Active Backlogs", 0, 10, 0)
+            projects = st.number_input("Number of Projects", 0, 15, key="projects_input")
+            internships = st.number_input("Number of Internships", 0, 10, key="internships_input")
+            certifications = st.number_input("Number of Certifications", 0, 15, key="certifications_input")
+            backlogs = st.number_input("Number of Active Backlogs", 0, 10, key="backlogs_input")
 
         st.markdown(f"**Technical Skills — select what you know ({branch} + {role})**")
         known_skills = st.multiselect(
             "Skills", options=list(skill_catalog.keys()), label_visibility="collapsed",
+            key="known_skills_select",
         )
         technical = compute_technical_score(branch, known_skills)
         st.caption(f"Computed technical skill score based on your selection: **{technical}/100**")

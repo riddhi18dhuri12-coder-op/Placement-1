@@ -10,4 +10,6 @@ joblib
 plotly
 shap
 fpdf2
+pypdf
+python-docx
 pytest
